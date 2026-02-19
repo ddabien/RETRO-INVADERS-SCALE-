@@ -1,10 +1,11 @@
 import ScreenSaver
+import AVKit
 import AVFoundation
 
 final class SpaceInvadersScreensaverView: ScreenSaverView {
 
     private var player: AVPlayer?
-    private var playerView: PlayerView?
+    private var playerLayer: AVPlayerLayer?
 
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
@@ -17,15 +18,23 @@ final class SpaceInvadersScreensaverView: ScreenSaverView {
     }
 
     private func setupVideoPlayer() {
-        guard let videoURL = Bundle(for: type(of: self))
-            .url(forResource: "video", withExtension: "mp4")
-            ?? Bundle.main.url(forResource: "video", withExtension: "mp4")
-        else {
-            NSLog("❌ Video no encontrado")
+        let bundlesToTry: [Bundle] = [
+            Bundle(for: type(of: self)),
+            Bundle.main
+        ]
+
+        let videoURL = bundlesToTry
+            .compactMap { $0.url(forResource: "video", withExtension: "mp4") }
+            .first
+
+        guard let videoURL else {
+            NSLog("❌ Video no encontrado. Bundles probados:")
+            bundlesToTry.forEach { NSLog("   • \($0.bundlePath)") }
             return
         }
 
         let item = AVPlayerItem(url: videoURL)
+
         let player = AVPlayer(playerItem: item)
         player.isMuted = true
         player.actionAtItemEnd = .none
@@ -37,33 +46,21 @@ final class SpaceInvadersScreensaverView: ScreenSaverView {
             object: item
         )
 
-        // ✅ Usamos un NSView dedicado que tiene AVPlayerLayer como backing layer
-        let pv = PlayerView(frame: bounds)
-        pv.autoresizingMask = [.width, .height]
-        pv.playerLayer.player = player
-        pv.playerLayer.videoGravity = .resizeAspectFill
+        let layer = AVPlayerLayer(player: player)
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = bounds
 
-        addSubview(pv)
+        // ✅ clave: que el layer se redimensione con el view
+        layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        layer.needsDisplayOnBoundsChange = true
+
+        wantsLayer = true
+        self.layer?.addSublayer(layer)
 
         self.player = player
-        self.playerView = pv
-    }
+        self.playerLayer = layer
 
-    // ✅ Iniciamos play AQUÍ, cuando el view ya tiene window (evita black screen en fullscreen)
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard window != nil else { return }
-        player?.play()
-    }
-
-    override func startAnimation() {
-        super.startAnimation()
-        player?.play()
-    }
-
-    override func stopAnimation() {
-        super.stopAnimation()
-        player?.pause()
+        player.play()
     }
 
     @objc private func restartVideo() {
@@ -71,31 +68,25 @@ final class SpaceInvadersScreensaverView: ScreenSaverView {
         player?.play()
     }
 
+    // Tu método: lo dejamos, suma
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        super.resizeSubviews(withOldSize: oldSize)
+        playerLayer?.frame = bounds
+    }
+
+    // ✅ más confiable en screensavers
+    override func layout() {
+        super.layout()
+        playerLayer?.frame = bounds
+    }
+
+    // ✅ cubre casos donde layout no dispara como esperás
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        playerLayer?.frame = bounds
+    }
+
     deinit {
         NotificationCenter.default.removeObserver(self)
-    }
-}
-
-// ✅ NSView que expone AVPlayerLayer como su backing layer nativo
-// Esto es mucho más estable que agregar AVPlayerLayer como sublayer
-final class PlayerView: NSView {
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        wantsLayer = true
-    }
-
-    // makeBackingLayer es el método correcto para decirle a NSView qué CALayer usar
-    override func makeBackingLayer() -> CALayer {
-        return AVPlayerLayer()
-    }
-
-    var playerLayer: AVPlayerLayer {
-        return layer as! AVPlayerLayer
     }
 }

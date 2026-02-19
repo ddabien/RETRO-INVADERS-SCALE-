@@ -1,0 +1,125 @@
+name: Build Space Invaders Video Screensaver
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.0.0"
+
+      - name: Verify Swift version
+        run: |
+          set -euxo pipefail
+          swift --version
+          xcodebuild -version
+
+      # Carpeta final del screensaver
+      - name: Create .saver structure
+        run: |
+          set -euxo pipefail
+          mkdir -p SpaceInvadersScreensaver.saver/Contents/MacOS
+          mkdir -p SpaceInvadersScreensaver.saver/Contents/Resources
+          mkdir -p build
+
+      # Si tu repo ya trae un .saver (por ej SpaceInvaders_VIDEO.saver), copiamos Info.plist + Resources
+      - name: Copy Info.plist and Resources (if present)
+        run: |
+          set -euxo pipefail
+
+          # Intento 1: si existe Info.plist en raíz del repo
+          if [ -f "Info.plist" ]; then
+            cp "Info.plist" "SpaceInvadersScreensaver.saver/Contents/Info.plist"
+          fi
+
+          # Intento 2: si existe algún .saver en el repo con su Info.plist
+          SAVER_PLIST="$(find . -maxdepth 4 -name Info.plist -path "*\.saver/Contents/Info.plist" | head -n 1 || true)"
+          if [ -n "$SAVER_PLIST" ]; then
+            cp "$SAVER_PLIST" "SpaceInvadersScreensaver.saver/Contents/Info.plist"
+          fi
+
+          # Copiar video.mp4 si existe en algún Resources de .saver
+          SAVER_VIDEO="$(find . -maxdepth 6 -name video.mp4 -path "*\.saver/Contents/Resources/video.mp4" | head -n 1 || true)"
+          if [ -n "$SAVER_VIDEO" ]; then
+            cp "$SAVER_VIDEO" "SpaceInvadersScreensaver.saver/Contents/Resources/video.mp4"
+          fi
+
+          # Falla explícita si falta el Info.plist (mejor morir acá que en silencio)
+          test -f "SpaceInvadersScreensaver.saver/Contents/Info.plist"
+
+      - name: Build arm64 bundle
+        run: |
+          set -euxo pipefail
+          swiftc \
+            -target arm64-apple-macosx13.0 \
+            -parse-as-library \
+            -framework Cocoa \
+            -framework ScreenSaver \
+            -framework AVKit \
+            -framework AVFoundation \
+            -Xlinker -bundle \
+            -o build/SpaceInvadersScreensaver_arm64 \
+            SpaceInvadersScreensaver.swift
+
+      - name: Build x86_64 bundle
+        run: |
+          set -euxo pipefail
+          swiftc \
+            -target x86_64-apple-macosx13.0 \
+            -parse-as-library \
+            -framework Cocoa \
+            -framework ScreenSaver \
+            -framework AVKit \
+            -framework AVFoundation \
+            -Xlinker -bundle \
+            -o build/SpaceInvadersScreensaver_x86_64 \
+            SpaceInvadersScreensaver.swift
+
+      - name: Create Universal binary (lipo)
+        run: |
+          set -euxo pipefail
+          lipo -create \
+            build/SpaceInvadersScreensaver_arm64 \
+            build/SpaceInvadersScreensaver_x86_64 \
+            -output SpaceInvadersScreensaver.saver/Contents/MacOS/SpaceInvadersScreensaver
+
+      - name: Verify build output
+        run: |
+          set -euxo pipefail
+          echo "✅ Binary creado:"
+          ls -lh SpaceInvadersScreensaver.saver/Contents/MacOS/
+          echo ""
+          echo "Arquitecturas:"
+          file SpaceInvadersScreensaver.saver/Contents/MacOS/SpaceInvadersScreensaver
+          echo ""
+          echo "Verificando archivos:"
+          test -f SpaceInvadersScreensaver.saver/Contents/Info.plist && echo "✅ Info.plist"
+          test -f SpaceInvadersScreensaver.saver/Contents/Resources/video.mp4 && echo "✅ video.mp4"
+          echo ""
+          echo "Tamaño del video:"
+          ls -lh SpaceInvadersScreensaver.saver/Contents/Resources/video.mp4
+
+      - name: Create ZIP
+        run: |
+          set -euxo pipefail
+          ditto -c -k --sequesterRsrc --keepParent SpaceInvadersScreensaver.saver SpaceInvadersScreensaver.zip
+          ls -lh SpaceInvadersScreensaver.zip
+
+      - name: Upload Screensaver
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpaceInvadersScreensaver
+          path: SpaceInvadersScreensaver.zip
+          retention-days: 90

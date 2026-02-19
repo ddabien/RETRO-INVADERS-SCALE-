@@ -1,6 +1,6 @@
 # retro-invaders-screensaver 
 
-**SÚPER SIMPLE. SIN COMPLICACIONES.**
+**SÚPER SIMPLE. SIN COMPLICACIONES. VERSION ESCALABLE.**
 
 
 ## ⚙️ Compatibilidad:

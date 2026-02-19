@@ -9,23 +9,16 @@ final class SpaceInvadersScreensaverView: ScreenSaverView {
 
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
-
-        // Un tick suave alcanza (no hace falta 60fps)
-        animationTimeInterval = 1.0 / 10.0
-
         setupVideoPlayer()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-
-        animationTimeInterval = 1.0 / 10.0
-
         setupVideoPlayer()
     }
 
     private func setupVideoPlayer() {
-        // NO CAMBIO tus bundles ni la forma de buscar el video
+        // En un .saver, a veces el recurso no aparece en Bundle.main, por eso probamos varios.
         let bundlesToTry: [Bundle] = [
             Bundle(for: type(of: self)),
             Bundle.main
@@ -56,11 +49,9 @@ final class SpaceInvadersScreensaverView: ScreenSaverView {
 
         let layer = AVPlayerLayer(player: player)
         layer.frame = bounds
-        layer.videoGravity = .resizeAspectFill
 
-        // Ayuda a que acompañe el tamaño sin depender de callbacks dudosos
-        layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-        layer.needsDisplayOnBoundsChange = true
+        // ✅ IMPORTANTE: evita que se corte. Respeta proporción y entra completo.
+        layer.videoGravity = .resizeAspect
 
         wantsLayer = true
         self.layer?.addSublayer(layer)
@@ -76,9 +67,14 @@ final class SpaceInvadersScreensaverView: ScreenSaverView {
         player?.play()
     }
 
-    // ✅ El fix real del escalado en ScreenSaverView
-    override func animateOneFrame() {
-        super.animateOneFrame()
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        super.resizeSubviews(withOldSize: oldSize)
+        playerLayer?.frame = bounds
+    }
+
+    // ✅ Más confiable para cambios de tamaño en preview / distintos monitores
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
         playerLayer?.frame = bounds
     }
 
